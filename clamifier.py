@@ -5,7 +5,12 @@
 
 class SigParser:
 	def __init__(self, sig):
-		pass
+		self.sig = sig
+
+	def parse(self):
+		for s in self.sig:
+			print s
+		print "----"
 
 class DbParser:
 	def __init__(self, filename):
@@ -23,9 +28,10 @@ class DbParser:
 				sig.append(line)
 			else:
 				sp = SigParser(sig)
+				sp.parse()
 				sig = []
 				counter += 1
-				print "\r",counter,
+#				print "\r",counter,
 		return 0
 
 p = DbParser("sigbase.sig")
