@@ -5,10 +5,29 @@
 
 class TypeDesc:
 	def __init__(self, desc):
-		self.desc = desc
+		self.isAnd = False
+		self.isCrc = False
+		self.isLog = False
+		self.isString = False
+		self.isAscii = False 
+		self.values = {}
 
-	def parse(self):
-		print self.desc
+		for elem in desc.split(':'):
+			elem = elem.strip()
+			if elem == 'AND':
+				self.isAnd = True
+			elif elem == 'CRC':
+				self.isCrc = True
+			elif elem == 'LOGIC':
+				self.isLog = True
+			elif elem == 'STRING':
+				self.isString = True
+			elif elem == 'ASCII':
+				self.isAscii = True
+			else:
+				for val in elem.split(','):
+					self.values[int(val)] = 1
+		print self.values, desc
 
 class SigParser:
 	def __init__(self, sig):
@@ -21,7 +40,6 @@ class SigParser:
 				continue
 			if s[0:5] == "TYPE:":
 				self.typeDesc = TypeDesc(s[5:])
-				self.typeDesc.parse()
 				continue
 
 class DbParser:
