@@ -39,6 +39,16 @@ class TypeDesc:
 					self.values[int(val)] = 1
 		print self.values, desc
 
+	def __str__(self):
+		ret = ""
+		if self.isCrc: ret += "CRC:"
+		if self.isAnd: ret += "AND:"
+		if self.isLog: ret += "LOGIC:"
+		if self.isString: ret += "STRING:"
+		if self.isAscii: ret += "ASCII:"
+		ret += ','.join(map(str, self.values.keys()))
+		return ret
+
 class DataParser:
 	def __init__(self, typeDesc, dataLines):
 		self.values = []
@@ -58,7 +68,6 @@ class DataParser:
 
 	def parseString(self, line):
 		idx = 1
-		debugRewrite('"')
 
 		# if idx overflow it doesn't really matter, cause it means
 		# string wasn't properly terminated, exception will be
@@ -67,7 +76,6 @@ class DataParser:
 		while line[idx] != '"':
 			if line[idx] == '\\':
 				idx += 1
-				debugRewrite('\\' + line[idx])
 				if line[idx] == '0':
 					self.values.append( long(0) )
 				elif line[idx] == '\\':
@@ -75,10 +83,8 @@ class DataParser:
 				else:
 					raise DataException('unsupported escaped character [\\%c] in string: %s' % (line[idx], line))
 			else:
-				debugRewrite(line[idx])
 				self.values.append( long(ord(line[idx])) )
 			idx += 1
-		debugRewrite('"\n')
 
 	def parseAscii(self, line):
 		idx = 0
@@ -95,12 +101,10 @@ class DataParser:
 				if line[idx] == '\\':
 					idx += 1
 					if -1 != "'\\".find(line[idx]):
-						debugRewrite("'\\%c'," % line[idx])
 						self.values.append( long(ord(line[idx])) )
 					else:
 						raise DataException('not handled yet ['+line[idx]+']')
 				else:
-					debugRewrite("'%c'," % line[idx])
 					self.values.append( long(ord(line[idx])) )
 				state = Closing
 			elif state == Closing:
@@ -116,7 +120,6 @@ class DataParser:
 				else:
 					raise DataException('unexpected data ['+line+']')
 			idx += 1
-		debugRewrite("\n")
 
 	def parseNumbers(self, line):
 		for number in line.split(','):
@@ -126,12 +129,12 @@ class DataParser:
 
 			if cleanNumber[0:2] == "0x":
 				val = long(cleanNumber, 16)
-				debugRewrite("0x%0*x," % (len(cleanNumber)-2, val))
 			else:
 				val = long(cleanNumber, 10)
-				debugRewrite("%*d," % (len(number), val))
 			self.values.append(val)
-		debugRewrite("\n")
+	
+	def __str__(self):
+		return ""
 
 class SigParser:
 	def __init__(self, sig, lineNumber):
@@ -144,15 +147,12 @@ class SigParser:
 		for idx,s in enumerate(self.sig):
 			if s[0:6] == "TITLE:":
 				self.title = s[6:].replace(':', ';')
-				debugRewrite( "TITLE:"+self.title.replace(';',':')+"\n\n")
 				continue
 			if s[0:5] == "TYPE:":
 				self.typeDesc = TypeDesc(s[5:])
-				debugRewrite("TYPE:"+s[5:]+"\n")
 				continue
 			if s[0:5] == "DATA:":
 				data = self.sig[idx+1:]
-				debugRewrite("DATA:\n");
 				continue
 		if not data:
 			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title)
@@ -161,6 +161,10 @@ class SigParser:
 		except DataException as de:
 			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title + ' child info:' + de.value)
 
+		debugRewrite("TITLE:"+self.title.replace(';',':')+"\n\n")
+		debugRewrite("TYPE:"+str(self.typeDesc)+"\n")
+		debugRewrite("DATA:\n");
+		debugRewrite(str(self.data));
 		debugRewrite("\n----\n\n")
 
 
