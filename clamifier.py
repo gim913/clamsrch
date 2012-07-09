@@ -57,13 +57,17 @@ class DataParser:
 			raise DataException('dummy')
 
 	def parseString(self, line):
-		debugRewrite(line+"\n")
 		idx = 1
-		while True:
-			if line[idx] == '"':
-				break;
+		debugRewrite('"')
+
+		# if idx overflow it doesn't really matter, cause it means
+		# string wasn't properly terminated, exception will be
+		# raised, and I'm happy with that :P
+		#
+		while line[idx] != '"':
 			if line[idx] == '\\':
 				idx += 1
+				debugRewrite('\\' + line[idx])
 				if line[idx] == '0':
 					self.values.append( long(0) )
 				elif line[idx] == '\\':
@@ -71,13 +75,46 @@ class DataParser:
 				else:
 					raise DataException('unsupported escaped character [\\%c] in string: %s' % (line[idx], line))
 			else:
+				debugRewrite(line[idx])
 				self.values.append( long(ord(line[idx])) )
 			idx += 1
+		debugRewrite('"\n')
 
 	def parseAscii(self, line):
-		debugRewrite(line+"\n")
-		self.values.append(0)
-		#raise DataException('dummy')
+		idx = 0
+		Opening,Want_Data,Closing,Skip_Separator = 0,1,2,3
+		state = Opening
+		while idx < len(line):
+			if state == Opening:
+				if line[idx] != "'":
+					raise DataException('was waiting for opening apostrophe')
+				state = Want_Data
+			elif state == Want_Data:
+				if line[idx] == '\\':
+					idx += 1
+					if -1 != "'\\".find(line[idx]):
+						debugRewrite("'\\%c'," % line[idx])
+						self.values.append( long(ord(line[idx])) )
+					else:
+						raise DataException('not handled yet ['+line[idx]+']')
+				else:
+					debugRewrite("'%c'," % line[idx])
+					self.values.append( long(ord(line[idx])) )
+				state = Closing
+			elif state == Closing:
+				if line[idx] != "'":
+					raise DataException('was waiting for closing apostrophe')
+				state = Skip_Separator
+			elif state == Skip_Separator:
+				if -1 != " ,".find(line[idx]):
+					pass
+				elif line[idx] == "'":
+					state = Opening
+					continue # !!!
+				else:
+					raise DataException('unexpected data ['+line+']')
+			idx += 1
+		debugRewrite("\n")
 
 	def parseNumbers(self, line):
 		for number in line.split(','):
