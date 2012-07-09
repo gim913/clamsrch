@@ -3,6 +3,8 @@
 # vim: tabstop=4 shiftwidth=4 noexpandtab 
 #
 
+import bisect
+
 fp = open("temp.dat", "w")
 def debugRewrite(msg):
 	fp.write(msg)
@@ -52,14 +54,17 @@ class TypeDesc:
 class DataParser:
 	def __init__(self, typeDesc, dataLines):
 		self.values = []
+		self.typeDesc = typeDesc
+		self.big = 0
+		self.neg = False
 		for line in dataLines:
 			line = line.strip()
 			if not len(line):
 				continue
 
-			if typeDesc.isString:
+			if self.typeDesc.isString:
 				self.parseString(line)
-			elif typeDesc.isAscii:
+			elif self.typeDesc.isAscii:
 				self.parseAscii(line)
 			else:
 				self.parseNumbers(line)
@@ -131,10 +136,36 @@ class DataParser:
 				val = long(cleanNumber, 16)
 			else:
 				val = long(cleanNumber, 10)
+
+			self.neg = self.neg or (val < 0)
+			self.big = max(self.big, abs(val))
 			self.values.append(val)
 	
+	def strString(self):
+		return "[str]"
+	def strAscii(self):
+		return "[ascii]"
+	def strNumbers(self):
+		idx = bisect.bisect([0x100L, 0x10000L, 0x100000000L, 0x10000000000000000L], self.big)
+		Width = [(2, 3+1), (4, 5+1),  (8, 10+1), (16, 20+1)][idx]
+		ret = ""
+		form = "%*d," if self.neg else "0x%0*x,"
+		elWidth = Width[1] if self.neg else Width[0]
+
+		for idx,elem in enumerate(self.values):
+			ret += (form % (Width[1], elem))
+			if (idx+1)%(64 / Width[0]) == 0:
+				ret += "\n"
+		if (idx+1)%(64 / Width[0]) != 0:
+			ret += "\n"
+		return ret
+
 	def __str__(self):
-		return ""
+		if self.typeDesc.isString:
+			return self.strString()
+		elif self.typeDesc.isAscii:
+			return self.strAscii()
+		return self.strNumbers()
 
 class SigParser:
 	def __init__(self, sig, lineNumber):
