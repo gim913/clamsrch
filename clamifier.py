@@ -84,6 +84,8 @@ class DataParser:
 		idx = 0
 		Opening,Want_Data,Closing,Skip_Separator = 0,1,2,3
 		state = Opening
+		# and yes, I know I could do that with few lines using re.
+		# but I want to have some more-or-less sensible errors
 		while idx < len(line):
 			if state == Opening:
 				if line[idx] != "'":
