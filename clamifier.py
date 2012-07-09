@@ -5,9 +5,9 @@
 
 import bisect
 
-fp = open("temp.dat", "w")
-def debugRewrite(msg):
-	fp.write(msg)
+#fp = open("temp.dat", "w")
+#def debugRewrite(msg):
+#	fp.write(msg)
 
 class DataException(Exception):
 	def __init__(self, value):
@@ -39,7 +39,9 @@ class TypeDesc:
 			else:
 				for val in elem.split(','):
 					self.values[int(val)] = 1
-		print self.values, desc
+
+	def isSimple(self):
+		return not (self.isCrc or self.isLog)
 
 	def __str__(self):
 		ret = ""
@@ -158,7 +160,6 @@ class DataParser:
 			ret += "\"\n"
 		return ret
 	
-
 	def strAscii(self):
 		ret = ""
 		for idx,elem in enumerate(self.values):
@@ -194,10 +195,23 @@ class DataParser:
 			return self.strAscii()
 		return self.strNumbers()
 
+def bswap(val, bits):
+	if bits == 16:
+		return ((val >> 8) | ((val&0xffL) << 8))
+	elif bits == 32:
+		temp1 = bswap(val&0xffffL, 16)
+		temp2 = bswap((val>>16)&0xffffL, 16)
+		return ((temp1<<16) | temp2)
+	else:
+		temp1 = bswap( val&0xffffffffL, 32 )
+		temp2 = bswap( (val>>32)&0xffffffffL, 32 )
+		return ((temp1<<32) | temp2)
+
 class SigParser:
-	def __init__(self, sig, lineNumber):
+	def __init__(self, ndb, sig, lineNumber):
 		self.sig = sig
 		self.sigLineNumber = lineNumber
+		self.ndb = ndb
 
 	def parse(self):
 		data = None
@@ -219,16 +233,63 @@ class SigParser:
 		except DataException as de:
 			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title + ' child info:' + de.value)
 
-		debugRewrite("TITLE:"+self.title.replace(';',':')+"\n\n")
-		debugRewrite("TYPE:"+str(self.typeDesc)+"\n")
-		debugRewrite("DATA:\n");
-		debugRewrite(str(self.data));
-		debugRewrite("\n----\n\n")
+		#debugRewrite("TITLE:"+self.title.replace(';',':')+"\n\n")
+		#debugRewrite("TYPE:"+str(self.typeDesc)+"\n")
+		#debugRewrite("DATA:\n");
+		#debugRewrite(str(self.data));
+		#debugRewrite("\n----\n\n")
 
+		if self.typeDesc.isSimple():
+			for bitWidth in self.typeDesc.values:
+				# lil endian
+				self.generateSigName(bitWidth, 0)
+				self.dumpData(bitWidth, 0)
+
+				if bitWidth == 8:
+					continue
+
+				# big endian
+				self.generateSigName(bitWidth, 1)
+				self.dumpData(bitWidth, 1)
+
+	def generateSigName(self, bitWidth, mode):
+		if bitWidth == 8:
+			self.ndb.write(self.title + (" [%d]" % bitWidth) )
+		else:
+			self.ndb.write(self.title + (" [%d.%s]" % (bitWidth, ['lil','big'][mode])))
+
+		self.ndb.write(":0:*:")
+
+	def dumpData(self, bitWidth, mode):
+		buff=""
+		maxVal = (1L << bitWidth)
+		for elem in self.data.values:
+			form = "%0*x"
+			if self.data.neg:
+				if elem < 0:
+					if -elem >= maxVal:
+						print "warning overflow found in sig: ", self.title
+						elem &= (maxVal-1)
+					elem = maxVal + elem
+					elem &= (maxVal-1)
+				# just to make them distinguishable
+				form = "%0*X"
+
+			if mode:
+				elem = bswap(elem, bitWidth)
+			buff += form % (bitWidth / 4, elem)
+		
+		buff += "\n"
+		self.ndb.write(buff)
 
 class DbParser:
-	def __init__(self, filename):
+	def __init__(self, filename, ndbName):
 		self.fd = open(filename, "r")
+		self.ndb = open(ndbName, "w")
+
+	def __del__(self):
+		self.fd.close()
+		self.ndb.close()
 
 	def parse(self):
 		sig = []
@@ -244,7 +305,7 @@ class DbParser:
 			if line != "----":
 				sig.append(line)
 			else:
-				sp = SigParser(sig, sigLine)
+				sp = SigParser(self.ndb, sig, sigLine)
 				sp.parse()
 				sig = []
 				counter += 1
@@ -252,7 +313,7 @@ class DbParser:
 #				print "\r",counter,
 		return 0
 
-p = DbParser("sigbase.sig")
+p = DbParser("sigbase.sig", "clamsign.ndb")
 p.parse()
 
-fp.close()
+#fp.close()
