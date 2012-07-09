@@ -36,19 +36,19 @@ class TypeDesc:
 		print self.values, desc
 
 class DataParser:
-	def __init__(self, dataLines):
+	def __init__(self, typeDesc, dataLines):
 		self.data = dataLines
 		for line in dataLines:
 			line = line.strip()
 			if not len(line):
 				continue
 
-			if line[0] == '"':
-				parseString(line)
-			elif line[0] == "'":
-				parseAscii(line)
+			if typeDesc.isString:
+				self.parseString(line)
+			elif typeDesc.isAscii:
+				self.parseAscii(line)
 			else:
-				parseNumbers(line)
+				self.parseNumbers(line)
 		raise DataException('dummy')
 
 	def parseString(self, line):
@@ -58,7 +58,8 @@ class DataParser:
 		pass
 
 	def parseNumbers(self, line):
-		pass
+		for number in line.split(','):
+			number = number.strip()
 
 class SigParser:
 	def __init__(self, sig, lineNumber):
@@ -80,7 +81,7 @@ class SigParser:
 				continue
 		if not data:
 			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title)
-		self.data = DataParser(data)
+		self.data = DataParser(self.typeDesc, data)
 
 class DbParser:
 	def __init__(self, filename):
