@@ -142,9 +142,36 @@ class DataParser:
 			self.values.append(val)
 	
 	def strString(self):
-		return "[str]"
+		ret = ""
+		for idx,elem in enumerate(self.values):
+			if idx%32 == 0:
+				ret += "\""
+			if 0 == elem:
+				ret += "\\0"
+			elif -1 != '"\\'.find(chr(elem)):
+				ret += "\\"+chr(elem)
+			else:
+				ret += chr(elem)
+			if (idx+1)%32 == 0:
+				ret += "\"\n"
+		if (idx+1)%32 != 0:
+			ret += "\"\n"
+		return ret
+	
+
 	def strAscii(self):
-		return "[ascii]"
+		ret = ""
+		for idx,elem in enumerate(self.values):
+			if -1 != "'\\".find(chr(elem)):
+				ret += "'\\"+chr(elem)+"',"
+			else:
+				ret += "'"+chr(elem)+"',"
+			if (idx+1)%16 == 0:
+				ret += "\n"
+		if (idx+1)%16 != 0:
+			ret += "\n"
+		return ret
+
 	def strNumbers(self):
 		idx = bisect.bisect([0x100L, 0x10000L, 0x100000000L, 0x10000000000000000L], self.big)
 		Width = [(2, 3+1), (4, 5+1),  (8, 10+1), (16, 20+1)][idx]
@@ -153,7 +180,7 @@ class DataParser:
 		elWidth = Width[1] if self.neg else Width[0]
 
 		for idx,elem in enumerate(self.values):
-			ret += (form % (Width[1], elem))
+			ret += (form % (elWidth, elem))
 			if (idx+1)%(64 / Width[0]) == 0:
 				ret += "\n"
 		if (idx+1)%(64 / Width[0]) != 0:
