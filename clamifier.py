@@ -3,6 +3,10 @@
 # vim: tabstop=4 shiftwidth=4 noexpandtab 
 #
 
+fp = open("temp.dat", "w")
+def debugRewrite(msg):
+	fp.write(msg)
+
 class DataException(Exception):
 	def __init__(self, value):
 		self.value = value
@@ -37,7 +41,7 @@ class TypeDesc:
 
 class DataParser:
 	def __init__(self, typeDesc, dataLines):
-		self.data = dataLines
+		self.values = []
 		for line in dataLines:
 			line = line.strip()
 			if not len(line):
@@ -49,17 +53,46 @@ class DataParser:
 				self.parseAscii(line)
 			else:
 				self.parseNumbers(line)
-		raise DataException('dummy')
+		if not len(self.values):
+			raise DataException('dummy')
 
 	def parseString(self, line):
-		pass
+		debugRewrite(line+"\n")
+		idx = 1
+		while True:
+			if line[idx] == '"':
+				break;
+			if line[idx] == '\\':
+				idx += 1
+				if line[idx] == '0':
+					self.values.append( long(0) )
+				elif line[idx] == '\\':
+					self.values.append( long(ord(line[idx])) )
+				else:
+					raise DataException('unsupported escaped character [\\%c] in string: %s' % (line[idx], line))
+			else:
+				self.values.append( long(ord(line[idx])) )
+			idx += 1
 
 	def parseAscii(self, line):
-		pass
+		debugRewrite(line+"\n")
+		self.values.append(0)
+		#raise DataException('dummy')
 
 	def parseNumbers(self, line):
 		for number in line.split(','):
-			number = number.strip()
+			cleanNumber = number.strip()
+			if not len(cleanNumber):
+				continue
+
+			if cleanNumber[0:2] == "0x":
+				val = long(cleanNumber, 16)
+				debugRewrite("0x%0*x," % (len(cleanNumber)-2, val))
+			else:
+				val = long(cleanNumber, 10)
+				debugRewrite("%*d," % (len(number), val))
+			self.values.append(val)
+		debugRewrite("\n")
 
 class SigParser:
 	def __init__(self, sig, lineNumber):
@@ -72,16 +105,25 @@ class SigParser:
 		for idx,s in enumerate(self.sig):
 			if s[0:6] == "TITLE:":
 				self.title = s[6:].replace(':', ';')
+				debugRewrite( "TITLE:"+self.title.replace(';',':')+"\n\n")
 				continue
 			if s[0:5] == "TYPE:":
 				self.typeDesc = TypeDesc(s[5:])
+				debugRewrite("TYPE:"+s[5:]+"\n")
 				continue
 			if s[0:5] == "DATA:":
 				data = self.sig[idx+1:]
+				debugRewrite("DATA:\n");
 				continue
 		if not data:
 			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title)
-		self.data = DataParser(self.typeDesc, data)
+		try:
+			self.data = DataParser(self.typeDesc, data)
+		except DataException as de:
+			raise DataException('error in data of signature at line ' + str(self.sigLineNumber) + ' named: ' + self.title + ' child info:' + de.value)
+
+		debugRewrite("\n----\n\n")
+
 
 class DbParser:
 	def __init__(self, filename):
@@ -112,3 +154,4 @@ class DbParser:
 p = DbParser("sigbase.sig")
 p.parse()
 
+fp.close()
