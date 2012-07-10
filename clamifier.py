@@ -287,18 +287,29 @@ class SigParser:
 		self.ndb.write("\n")
 
 	def generateSigName(self, bitWidth, mode, sig, sigLen):
+		sigName = self.title
+		sigName += (" [%d." % bitWidth)
 		if bitWidth == 8:
-			self.ndb.write(self.title + (" [%d.byt.%d]" % (bitWidth,sigLen)) )
+			sigName += "byt."
+		elif mode == Little_Endian:
+			sigName += "lil."
+		elif mode == Big_Endian:
+			sigName += "big."
+
+		if self.typeDesc.isAnd:
+			sigName += "AND]"
 		else:
-			self.ndb.write(self.title + (" [%d.%s.%d]" % (bitWidth, ['lil','big'][mode], sigLen)))
-		self.ndb.write(":0:*:")
+			sigName += ("%d]" % sigLen);
+
+		self.ndb.write(sigName + ":0:*:")
 		self.ndb.write(sig)
 		self.ndb.write("\n")
 
 	def dumpData(self, bitWidth, mode, dataObj):
 		buff=""
+		bufLen = 0
 		maxVal = (1L << bitWidth)
-		for elem in dataObj.values:
+		for idx, elem in enumerate(dataObj.values):
 			form = "%0*x"
 			if dataObj.neg:
 				if elem < 0:
@@ -314,13 +325,20 @@ class SigParser:
 			# there is Little_Endian specified (cause we're just printing, the way it is)
 			if (mode == Little_Endian) and (bitWidth != 8):
 				elem = bswap(elem, bitWidth)
-			buff += form % (bitWidth / 4, elem)
+			
+			tempBuf = form % (bitWidth / 4, elem)
+			buff += tempBuf
+			bufLen += len(tempBuf)
 
-			if len(buff) % 2:
+			# avoid adding it to last elem
+			if self.typeDesc.isAnd and (idx != len(dataObj.values)-1):
+				buff += "{-20}"
+
+			if bufLen % 2:
 				print "warning, neg[",dataObj.neg,"] error occured while adding signature: ", self.title
 				break
 
-			if len(buff) > 1024*16:
+			if len(buff) > 1023*16:
 				print "warning, truncating signature: ",self.title,"to",(len(buff)/2)," bytes"
 				break
 		
