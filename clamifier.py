@@ -3,6 +3,7 @@
 # vim: tabstop=4 shiftwidth=4 noexpandtab 
 #
 
+import sys
 import bisect
 
 #fp = open("temp.dat", "w")
@@ -242,23 +243,24 @@ class SigParser:
 		if self.typeDesc.isSimple():
 			for bitWidth in self.typeDesc.values:
 				# lil endian
-				self.generateSigName(bitWidth, 0)
-				self.dumpData(bitWidth, 0)
+				b,l = self.dumpData(bitWidth, 0)
+				self.generateSigName(bitWidth, 0, b, l)
 
 				if bitWidth == 8:
 					continue
 
 				# big endian
-				self.generateSigName(bitWidth, 1)
-				self.dumpData(bitWidth, 1)
+				b,l = self.dumpData(bitWidth, 1)
+				self.generateSigName(bitWidth, 1, b, l)
 
-	def generateSigName(self, bitWidth, mode):
+	def generateSigName(self, bitWidth, mode, sig, sigLen):
 		if bitWidth == 8:
-			self.ndb.write(self.title + (" [%d]" % bitWidth) )
+			self.ndb.write(self.title + (" [%d.byt.%d]" % (bitWidth,sigLen)) )
 		else:
-			self.ndb.write(self.title + (" [%d.%s]" % (bitWidth, ['lil','big'][mode])))
-
+			self.ndb.write(self.title + (" [%d.%s.%d]" % (bitWidth, ['lil','big'][mode], sigLen)))
 		self.ndb.write(":0:*:")
+		self.ndb.write(sig)
+		self.ndb.write("\n")
 
 	def dumpData(self, bitWidth, mode):
 		buff=""
@@ -267,7 +269,7 @@ class SigParser:
 			form = "%0*x"
 			if self.data.neg:
 				if elem < 0:
-					if -elem >= maxVal:
+					if -elem > maxVal / 2:
 						print "warning overflow found in sig: ", self.title
 						elem &= (maxVal-1)
 					elem = maxVal + elem
@@ -278,9 +280,16 @@ class SigParser:
 			if mode:
 				elem = bswap(elem, bitWidth)
 			buff += form % (bitWidth / 4, elem)
+
+			if len(buff) % 2:
+				print "warning, neg[",self.data.neg,"] error occured while adding signature: ", self.title
+				break
+
+			if len(buff) > 1024*16:
+				print "warning, truncating signature: ",self.title,"to",(len(buff)/2)," bytes"
+				break
 		
-		buff += "\n"
-		self.ndb.write(buff)
+		return (buff, len(buff)/2)
 
 class DbParser:
 	def __init__(self, filename, ndbName):
@@ -313,7 +322,7 @@ class DbParser:
 #				print "\r",counter,
 		return 0
 
-p = DbParser("sigbase.sig", "clamsign.ndb")
+p = DbParser("sigbase.sig", "aaaaaa.ndb")
 p.parse()
 
 #fp.close()
