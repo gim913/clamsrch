@@ -6,6 +6,10 @@
 import sys
 import bisect
 
+sys.path.append('pycrc-0.7.10')
+
+from crc_algorithms import Crc
+
 #fp = open("temp.dat", "w")
 #def debugRewrite(msg):
 #	fp.write(msg)
@@ -53,6 +57,11 @@ class TypeDesc:
 		if self.isAscii: ret += "ASCII:"
 		ret += ','.join(map(str, self.values.keys()))
 		return ret
+
+class DummyData:
+	def __init__(self, values, neg):
+		self.values = values
+		self.neg = neg
 
 class DataParser:
 	def __init__(self, typeDesc, dataLines):
@@ -208,6 +217,8 @@ def bswap(val, bits):
 		temp2 = bswap( (val>>32)&0xffffffffL, 32 )
 		return ((temp1<<32) | temp2)
 
+Little_Endian = 0
+Big_Endian = 1
 class SigParser:
 	def __init__(self, ndb, sig, lineNumber):
 		self.sig = sig
@@ -243,15 +254,37 @@ class SigParser:
 		if self.typeDesc.isSimple():
 			for bitWidth in self.typeDesc.values:
 				# lil endian
-				b,l = self.dumpData(bitWidth, 0)
+				b,l = self.dumpData(bitWidth, 0, self.data)
 				self.generateSigName(bitWidth, 0, b, l)
 
 				if bitWidth == 8:
 					continue
 
 				# big endian
-				b,l = self.dumpData(bitWidth, 1)
+				b,l = self.dumpData(bitWidth, 1, self.data)
 				self.generateSigName(bitWidth, 1, b, l)
+
+		# currently if "CRC:" is specified only one width is allowed
+		if self.typeDesc.isCrc:
+			for Do_Reflect in [True, False]:
+				bitWidth = self.typeDesc.values.keys()[0]
+				crc = Crc(width = bitWidth, poly = self.data.values[0], reflect_in = Do_Reflect, xor_in = 0, reflect_out = Do_Reflect, xor_out = 0)
+				dummyData = DummyData(crc.gen_table(), False)
+
+				b,l = self.dumpData(bitWidth, Little_Endian, dummyData)
+				self.generateCrcSigName(bitWidth, Little_Endian, Do_Reflect, b)
+				if bitWidth != 8:
+					b,l = self.dumpData(bitWidth, Big_Endian, dummyData)
+					self.generateCrcSigName(bitWidth, Big_Endian, Do_Reflect, b)
+
+	def generateCrcSigName(self, bitWidth, mode, reflect, sig):
+		if bitWidth == 8:
+			self.ndb.write(self.title + (" [%d.byt.refl=%s]" % (bitWidth, reflect)) )
+		else:
+			self.ndb.write(self.title + (" [%d.%s.refl=%s]" % (bitWidth, ['lil','big'][mode], reflect)))
+		self.ndb.write(":0:*:")
+		self.ndb.write(sig)
+		self.ndb.write("\n")
 
 	def generateSigName(self, bitWidth, mode, sig, sigLen):
 		if bitWidth == 8:
@@ -262,12 +295,12 @@ class SigParser:
 		self.ndb.write(sig)
 		self.ndb.write("\n")
 
-	def dumpData(self, bitWidth, mode):
+	def dumpData(self, bitWidth, mode, dataObj):
 		buff=""
 		maxVal = (1L << bitWidth)
-		for elem in self.data.values:
+		for elem in dataObj.values:
 			form = "%0*x"
-			if self.data.neg:
+			if dataObj.neg:
 				if elem < 0:
 					if -elem > maxVal / 2:
 						print "warning overflow found in sig: ", self.title
@@ -277,12 +310,14 @@ class SigParser:
 				# just to make them distinguishable
 				form = "%0*X"
 
-			if mode:
+			# yes this is correct, we need to swap, when 
+			# there is Little_Endian specified (cause we're just printing, the way it is)
+			if (mode == Little_Endian) and (bitWidth != 8):
 				elem = bswap(elem, bitWidth)
 			buff += form % (bitWidth / 4, elem)
 
 			if len(buff) % 2:
-				print "warning, neg[",self.data.neg,"] error occured while adding signature: ", self.title
+				print "warning, neg[",dataObj.neg,"] error occured while adding signature: ", self.title
 				break
 
 			if len(buff) > 1024*16:
