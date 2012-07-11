@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# vim: tabstop=4 shiftwidth=4 noexpandtab 
+# vim: tabstop=4 shiftwidth=4 noexpandtab foldmethod=indent
 #
 
 import sys
@@ -220,10 +220,11 @@ def bswap(val, bits):
 Little_Endian = 0
 Big_Endian = 1
 class SigParser:
-	def __init__(self, ndb, sig, lineNumber):
+	def __init__(self, ndb, ldb, sig, lineNumber):
 		self.sig = sig
 		self.sigLineNumber = lineNumber
 		self.ndb = ndb
+		self.ldb = ldb
 
 	def parse(self):
 		data = None
@@ -254,18 +255,18 @@ class SigParser:
 		if self.typeDesc.isSimple():
 			for bitWidth in self.typeDesc.values:
 				# lil endian
-				b,l = self.dumpData(bitWidth, 0, self.data)
-				self.generateSigName(bitWidth, 0, b, l)
+				b,l = self.dumpData(bitWidth, Little_Endian, self.data)
+				self.generateSigName(self.ndb, bitWidth, Little_Endian, b, l)
 
 				if bitWidth == 8:
 					continue
 
 				# big endian
-				b,l = self.dumpData(bitWidth, 1, self.data)
-				self.generateSigName(bitWidth, 1, b, l)
+				b,l = self.dumpData(bitWidth, Big_Endian, self.data)
+				self.generateSigName(self.ndb, bitWidth, Big_Endian, b, l)
 
 		# currently if "CRC:" is specified only one width is allowed
-		if self.typeDesc.isCrc:
+		elif self.typeDesc.isCrc:
 			for Do_Reflect in [True, False]:
 				bitWidth = self.typeDesc.values.keys()[0]
 				crc = Crc(width = bitWidth, poly = self.data.values[0], reflect_in = Do_Reflect, xor_in = 0, reflect_out = Do_Reflect, xor_out = 0)
@@ -277,16 +278,23 @@ class SigParser:
 					b,l = self.dumpData(bitWidth, Big_Endian, dummyData)
 					self.generateCrcSigName(bitWidth, Big_Endian, Do_Reflect, b)
 
+		elif self.typeDesc.isLog:
+			for bitWidth in self.typeDesc.values:
+				b = self.dumpLogicalSignature(bitWidth, Little_Endian, self.data)
+				self.generateSigName(self.ldb, bitWidth, Little_Endian, b, 0)
+
 	def generateCrcSigName(self, bitWidth, mode, reflect, sig):
 		if bitWidth == 8:
 			self.ndb.write(self.title + (" [%d.byt.refl=%s]" % (bitWidth, reflect)) )
 		else:
 			self.ndb.write(self.title + (" [%d.%s.refl=%s]" % (bitWidth, ['lil','big'][mode], reflect)))
-		self.ndb.write(":0:*:")
 		self.ndb.write(sig)
 		self.ndb.write("\n")
 
-	def generateSigName(self, bitWidth, mode, sig, sigLen):
+	#
+	# Format of signame: name [width.(byt|lil|big)(.STR|.ASC).(length|AND)]
+	#
+	def generateSigName(self, writer, bitWidth, mode, sig, sigLen):
 		sigName = self.title
 		sigName += (" [%d." % bitWidth)
 		if bitWidth == 8:
@@ -296,28 +304,35 @@ class SigParser:
 		elif mode == Big_Endian:
 			sigName += "big."
 
+		if self.typeDesc.isString:
+			sigName += "STR."
+		elif self.typeDesc.isAscii:
+			sigName += "ASC."
+
 		if self.typeDesc.isAnd:
 			sigName += "AND]"
+		elif self.typeDesc.isLog:
+			sigName += "LOGIC]"
 		else:
 			sigName += ("%d]" % sigLen);
 
-		self.ndb.write(sigName + ":0:*:")
-		self.ndb.write(sig)
-		self.ndb.write("\n")
+		writer.write(sigName)
+		writer.write(sig)
+		writer.write("\n")
 
 	def dumpData(self, bitWidth, mode, dataObj):
 		buff=""
 		bufLen = 0
-		maxVal = (1L << bitWidth)
+		Max_Val = (1L << bitWidth)
 		for idx, elem in enumerate(dataObj.values):
 			form = "%0*x"
 			if dataObj.neg:
 				if elem < 0:
-					if -elem > maxVal / 2:
+					if -elem > Max_Val / 2:
 						print "warning overflow found in sig: ", self.title
-						elem &= (maxVal-1)
-					elem = maxVal + elem
-					elem &= (maxVal-1)
+						elem &= (Max_Val-1)
+					elem = Max_Val + elem
+					elem &= (Max_Val-1)
 				# just to make them distinguishable
 				form = "%0*X"
 
@@ -341,17 +356,61 @@ class SigParser:
 			if len(buff) > 1023*16:
 				print "warning, truncating signature: ",self.title,"to",(len(buff)/2)," bytes"
 				break
-		
-		return (buff, len(buff)/2)
+
+		prefix = ":0:*:"
+		return (prefix + buff, len(buff)/2)
+
+	#
+	# pass data as an argument just in case if I'd like
+	# to make some other use of that
+	#
+	def dumpLogicalSignature(self, bitWidth, mode, dataObj):
+		if dataObj.neg:
+			raise DataException('negative values in logical clauses unsupported')
+
+		logData = {}
+		Max_Val = (1L << bitWidth)
+		for el in dataObj.values:
+			if el in logData:
+				logData[el] += 1
+			else:
+				logData[el] = 1
+
+		# the following code relies on the property, 
+		# that in both of the loops, iterator will return elements
+		# in the same order...
+		clauses = []
+		for idx,item in enumerate(logData.iteritems()):
+			count = item[1]
+			if count > 1:
+				clauses.append( "(%d>%d)" % (idx, count) )
+			else:
+				clauses.append( "%d" % idx )
+		logicClause = '&'.join(clauses)
+
+		elements = []
+		form = "%0*x"
+		for elem,count in logData.iteritems():
+			if (mode == Little_Endian) and (bitWidth != 8):
+				elem = bswap(elem, bitWidth)
+				
+			elements.append( form % (bitWidth / 4, elem) )
+
+		subClause = ';'.join(elements)
+
+		prefix = ";Target:0;"
+		return (prefix + logicClause + ";" + subClause)
 
 class DbParser:
-	def __init__(self, filename, ndbName):
+	def __init__(self, filename, ndbName, ldbName):
 		self.fd = open(filename, "r")
 		self.ndb = open(ndbName, "w")
+		self.ldb = open(ldbName, "w")
 
 	def __del__(self):
 		self.fd.close()
 		self.ndb.close()
+		self.ldb.close()
 
 	def parse(self):
 		sig = []
@@ -367,7 +426,7 @@ class DbParser:
 			if line != "----":
 				sig.append(line)
 			else:
-				sp = SigParser(self.ndb, sig, sigLine)
+				sp = SigParser(self.ndb, self.ldb, sig, sigLine)
 				sp.parse()
 				sig = []
 				counter += 1
@@ -375,7 +434,7 @@ class DbParser:
 #				print "\r",counter,
 		return 0
 
-p = DbParser("sigbase.sig", "aaaaaa.ndb")
+p = DbParser("sigbase.sig", "aaaaaa.ndb", "aaaaaa.ldb")
 p.parse()
 
 #fp.close()
