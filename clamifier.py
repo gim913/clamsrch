@@ -81,7 +81,7 @@ class DataParser:
 			else:
 				self.parseNumbers(line)
 		if not len(self.values):
-			raise DataException('dummy')
+			raise DataException('error, signature does not contain any data')
 
 	def parseString(self, line):
 		idx = 1
@@ -444,3 +444,4 @@ p = DbParser("sigbase.sig", "clamsrch.ndb", "clamsrch.ldb")
 p.parse()
 
 #fp.close()
+
