@@ -36,12 +36,27 @@ class SigParser:
 			else:
 				raise DataException("ep_only has bad format")
 
+	def verify(self, sig):
+		chain = 0
+		maxChain = 0
+		for elem in sig.split(' '):
+			if elem == '??':
+				maxChain = max(chain, maxChain)
+				chain = 0
+			else:
+				chain += 1
+			if (chain > 1) or (maxChain > 1):
+				return True
+		return False
+
 	def flush(self):
-		self.ndb.write(self.title)
+		if not self.verify(self.signature):
+			print " [-] warning, dropping signature ", self.title
+			return
 		if self.ep == True:
-			self.ndb.write(':1:EP+0:')
+			self.ndb.write('(ep) '+self.title+':1:EP+0:')
 		else:
-			self.ndb.write(':1:*:')
+			self.ndb.write('(gl) '+self.title+':1:*:')
 		self.ndb.write(self.signature.replace(' ', ''))
 		self.ndb.write('\n')
 
